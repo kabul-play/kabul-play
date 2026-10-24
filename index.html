@@ -1,0 +1,266 @@
+
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kabul Play</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;padding:20px;min-height:100vh;
+ background:linear-gradient(160deg,#102f29,#176448);
+ color:#fff;font-family:Tahoma,Arial,sans-serif;
+ display:flex;justify-content:center;align-items:center
+}
+.app{width:100%;max-width:600px}
+header{text-align:center;margin-bottom:20px}
+h1{margin:0;font-size:34px}
+header p{color:#c6e7d5}
+.panel{
+ background:#fff;color:#193c2c;padding:16px;
+ border-radius:18px;margin-bottom:14px
+}
+.stats{display:flex;gap:12px}
+.stat{flex:1;background:#e8f5ed;padding:14px;
+ border-radius:12px;text-align:center}
+.stat strong{display:block;font-size:27px;margin-top:8px}
+canvas{
+ width:100%;display:block;border-radius:14px;
+ background:#d9efff;touch-action:manipulation
+}
+button{
+ border:0;border-radius:12px;padding:14px;
+ font-size:16px;font-weight:bold;cursor:pointer
+}
+#start{background:#176448;color:white;width:100%;margin-top:12px}
+#jump{background:#f2c94c;color:#243b30;flex:1}
+#reset{background:#e8f5ed;color:#176448;flex:1}
+.controls{display:flex;gap:10px;margin-top:10px}
+.note{font-size:12px;line-height:1.9;color:#d1e9dc}
+</style>
+</head>
+<body>
+<main class="app">
+<header>
+ <h1>🎮 Kabul Play</h1>
+ <p>بازی کن، بپر و رکورد خود را بشکن!</p>
+</header>
+
+<section class="panel">
+ <div class="stats">
+  <div class="stat">امتیاز<strong id="score">0</strong></div>
+  <div class="stat">بهترین رکورد<strong id="best">0</strong></div>
+ </div>
+</section>
+
+<section class="panel">
+ <canvas id="game" width="560" height="260"></canvas>
+ <button id="start">شروع بازی</button>
+ <div class="controls">
+  <button id="jump">⬆ پرش</button>
+  <button id="reset">شروع دوباره</button>
+ </div>
+ <p id="message" style="text-align:center">برای شروع، دکمه را بزن.</p>
+</section>
+
+<p class="note">
+ نسخه آزمایشی Kabul Play<br>
+ امتیازها فقط برای سرگرمی‌اند و پول واقعی نیستند.
+ برای درآمدزایی، بعداً به سرور آنلاین، کاربران واقعی
+ و یک روش درآمد معتبر نیاز داریم.
+</p>
+</main>
+
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+const scoreEl=document.getElementById("score");
+const bestEl=document.getElementById("best");
+const message=document.getElementById("message");
+const startBtn=document.getElementById("start");
+
+let running=false,ended=false,score=0,frame=0;
+let playerY=0,velocity=0,obstacles=[],coins=[];
+let animation=0;
+let best=0;
+
+try{
+ best=Number(localStorage.getItem("kabulPlayBest"))||0;
+}catch(e){}
+bestEl.textContent=best;
+
+const ground=215;
+
+function draw(){
+ ctx.clearRect(0,0,560,260);
+
+ // آسمان و کوه‌های کابل
+ ctx.fillStyle="#d9efff";
+ ctx.fillRect(0,0,560,260);
+ ctx.fillStyle="#a3c6a0";
+ ctx.beginPath();
+ ctx.moveTo(0,ground);
+ ctx.lineTo(90,105);
+ ctx.lineTo(180,ground);
+ ctx.lineTo(320,125);
+ ctx.lineTo(450,ground);
+ ctx.lineTo(530,145);
+ ctx.lineTo(560,ground);
+ ctx.fill();
+
+ // زمین
+ ctx.fillStyle="#c6a477";
+ ctx.fillRect(0,ground,560,45);
+ ctx.fillStyle="#467d4f";
+ ctx.fillRect(0,ground,560,5);
+
+ // سکه‌ها
+ ctx.fillStyle="#f0b82e";
+ for(const coin of coins){
+  ctx.beginPath();
+  ctx.arc(coin.x,coin.y,9,0,Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle="#fff0a0";
+  ctx.lineWidth=2;
+  ctx.stroke();
+ }
+
+ // موانع
+ ctx.fillStyle="#a94f35";
+ for(const o of obstacles){
+  ctx.fillRect(o.x,ground-o.h,o.w,o.h);
+  ctx.fillStyle="#df9572";
+  ctx.fillRect(o.x+4,ground-o.h+5,o.w-8,5);
+  ctx.fillStyle="#a94f35";
+ }
+
+ // شخصیت
+ const py=ground-34-playerY;
+ ctx.fillStyle="#245c43";
+ ctx.fillRect(65,py,27,29);
+ ctx.fillStyle="#f2c8a0";
+ ctx.fillRect(67,py-15,23,19);
+ ctx.fillStyle="#263c32";
+ ctx.fillRect(65,py-18,26,7);
+ ctx.fillStyle="#fff";
+ ctx.fillRect(82,py-9,4,4);
+ ctx.fillStyle="#245c43";
+ ctx.fillRect(68,py+27,8,8);
+ ctx.fillRect(82,py+27,8,8);
+
+ ctx.fillStyle="#214d38";
+ ctx.font="bold 14px Arial";
+ ctx.fillText("KABUL PLAY",12,22);
+}
+
+function reset(){
+ cancelAnimationFrame(animation);
+ running=true;
+ ended=false;
+ score=0;
+ frame=0;
+ playerY=0;
+ velocity=0;
+ obstacles=[];
+ coins=[];
+ scoreEl.textContent="0";
+ message.textContent="بپر و از موانع عبور کن!";
+ startBtn.textContent="بازی در جریان است";
+ draw();
+ animation=requestAnimationFrame(loop);
+}
+
+function jump(){
+ if(!running){
+  if(ended)reset();
+  return;
+ }
+ if(playerY===0)velocity=-11;
+}
+
+function loop(){
+ if(!running)return;
+ frame++;
+
+ velocity+=0.55;
+ playerY-=velocity;
+ if(playerY<0){
+  playerY=0;
+  velocity=0;
+ }
+
+ const speed=4+Math.min(score/400,3);
+
+ if(frame%75===0){
+  obstacles.push({
+   x:575,
+   w:20+Math.random()*13,
+   h:24+Math.random()*28
+  });
+ }
+ if(frame%105===0){
+  coins.push({x:575,y:125+Math.random()*35});
+ }
+
+ obstacles.forEach(o=>o.x-=speed);
+ coins.forEach(c=>c.x-=speed);
+
+ coins=coins.filter(c=>{
+  if(c.x>52&&c.x<100&&
+     Math.abs(c.y-(ground-34-playerY))<30){
+   score+=10;
+   return false;
+  }
+  return c.x>-20;
+ });
+
+ obstacles=obstacles.filter(o=>o.x>-30);
+
+ const hit=obstacles.some(o=>
+  o.x<92&&o.x+o.w>65&&
+  playerY<o.h+8
+ );
+
+ if(hit){
+  running=false;
+  ended=true;
+  cancelAnimationFrame(animation);
+  if(score>best){
+   best=score;
+   bestEl.textContent=best;
+   try{
+    localStorage.setItem("kabulPlayBest",String(best));
+   }catch(e){}
+  }
+  message.textContent="بازی تمام شد! امتیاز: "+score;
+  startBtn.textContent="بازی دوباره";
+  draw();
+  return;
+ }
+
+ if(frame%5===0){
+  score++;
+  scoreEl.textContent=score;
+ }
+ draw();
+ animation=requestAnimationFrame(loop);
+}
+
+startBtn.addEventListener("click",()=>{
+ if(!running)reset();
+});
+document.getElementById("jump").addEventListener("click",jump);
+document.getElementById("reset").addEventListener("click",reset);
+canvas.addEventListener("pointerdown",jump);
+document.addEventListener("keydown",e=>{
+ if(e.code==="Space"||e.code==="ArrowUp"){
+  e.preventDefault();
+  jump();
+ }
+});
+
+draw();
+</script>
+</body>
+</html>
